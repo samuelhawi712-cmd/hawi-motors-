@@ -61,3 +61,19 @@ drop policy if exists "Sellers update own car photos" on storage.objects;
 create policy "Sellers update own car photos" on storage.objects for update to authenticated using (bucket_id = 'car-photos' and (storage.foldername(name))[1] = auth.uid()::text) with check (bucket_id = 'car-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 drop policy if exists "Sellers delete own car photos" on storage.objects;
 create policy "Sellers delete own car photos" on storage.objects for delete to authenticated using (bucket_id = 'car-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Prevent ordinary signed-in users from promoting themselves to dealer/admin.
+create or replace function public.prevent_profile_role_escalation()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is not null and new.account_type is distinct from old.account_type then
+    raise exception 'Account type changes must be performed by a trusted administrator';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists protect_profile_account_type on public.profiles;
+create trigger protect_profile_account_type
+before update on public.profiles
+for each row execute function public.prevent_profile_role_escalation();
